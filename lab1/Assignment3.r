@@ -106,17 +106,21 @@ grid$prob <- predict(model, newdata = grid, type = "response")
 # Reshape for ggplot
 grid_melt <- melt(grid, id.vars = c("x1", "x2"))
 
+
+
+
 # Plotting
 ggplot() +
-  geom_tile(data = grid_melt, aes(x = x1, y = x2), alpha = 0.5) +
-  scale_fill_gradient2(data = grid_melt, low = "blue", high = "red", mid = "white", midpoint = r, limit = c(0, 1), space = "Lab", name = "Probability") +
-  geom_contour(data = grid_melt, aes(x = x1, y = x2, z = y_prob), breaks = c(r), color = "grey") +
+	geom_tile(data = grid_melt, aes(x = x1, y = x2, fill = value), alpha = 0.5) +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = r, limit = c(0, 1), space = "Lab", name="Probability") +
+  geom_contour(data = grid_melt, aes(x = x1, y = x2, z = value), breaks = c(r), color = "grey") +
   geom_point(data = test_data, aes(x = x1, y = x2, color = as.factor(y_pred)), alpha = 0.5) +
   labs(title = 'Plasma Glucose Concentration vs Age with Decision Boundary',
        x = 'Plasma Glucose Concentration',
        y = 'Age') +
   theme_minimal() +
   theme(legend.position = "bottom")
+
 
 ##################################Task 4##################################
 library(ggplot2)	

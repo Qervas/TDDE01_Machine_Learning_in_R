@@ -109,12 +109,8 @@ test_predictions <- predict(lm_model, test_data_scaled)
 train_mse <- mean((train_data_scaled$ViolentCrimesPerPop - train_predictions)^2)
 test_mse <- mean((test_data_scaled$ViolentCrimesPerPop - test_predictions)^2)
 
-# Compute RMSE
-train_rmse <- sqrt(train_mse)
-test_rmse <- sqrt(test_mse)
-
 # Output the errors
-list(train_rmse = train_rmse, test_rmse = test_rmse)
+list(train_mse = train_mse, test_mse = test_mse)
 
 plot_train_data <- data.frame(Actual = train_data_scaled$ViolentCrimesPerPop, Predicted = train_predictions)
 plot_test_data <- data.frame(Actual = test_data_scaled$ViolentCrimesPerPop, Predicted = test_predictions)
@@ -143,13 +139,37 @@ grid.arrange(p1, p2, ncol = 2)
 
 
 
-
 ##############Task 4###############
+
+# Global variables to store the training and test errors
+train_errors <<- numeric(0)
+test_errors <<- numeric(0)
+theta_history <<- list()
 # Define the cost function for linear regression without intercept
 cost_function <- function(theta, X, y) {
   predictions <- X %*% theta
   mse <- mean((predictions - y) ^ 2)
   return(mse)
+}
+
+# Wrapper function to update errors at each iteration
+cost_function_with_errors <- function(theta) {
+
+  theta_history <<- c(theta_history, list(theta))
+  # Calculate the training MSE using the provided parameters
+  train_mse <- cost_function(theta, X_train, y_train)
+  
+  # Append the training error to the global train_errors variable
+  train_errors <<- c(train_errors, train_mse)
+  
+  # Calculate the test MSE using the provided parameters
+  test_predictions <- X_test %*% theta
+  test_mse <- mean((test_predictions - y_test) ^ 2)
+  
+  # Append the test error to the global test_errors variable
+  test_errors <<- c(test_errors, test_mse)
+  
+  return(train_mse)
 }
 
 # Prepare the data
@@ -158,58 +178,65 @@ y_train <- train_data_scaled$ViolentCrimesPerPop
 X_test <- as.matrix(test_data_scaled[, -which(names(test_data_scaled) == "ViolentCrimesPerPop")])
 y_test <- test_data_scaled$ViolentCrimesPerPop
 
-# Run the optimization
+# Run the optimization using the wrapper function
 optim_results <- optim(
   par = rep(0, ncol(X_train)), # Initial parameters set to zero
-  fn = cost_function,
-  X = X_train,
-  y = y_train,
+  fn = cost_function_with_errors, # Use the wrapper function
   method = "BFGS",
-  control = list(maxit = 1000, trace = 1) # Print output every iteration
+  control = list(maxit = 1000, REPORT = 1) # Report progress at every iteration
 )
 
-# Extract the optimized parameters
-optimized_theta <- optim_results$par
+# Create a data frame for plotting errors
+iterations <- 1:length(train_errors)  # Number of iterations tracked
+plot_data <- data.frame(
+  Iteration = iterations,
+  TrainError = train_errors,
+  TestError = test_errors
+)
 
-# Compute the training error
-train_predictions <- X_train %*% optimized_theta
-train_mse <- mean((train_predictions - y_train) ^ 2)
+# Skip the first few iterations if they have extreme values
+plot_data_filtered <- plot_data[-(1:10), ]  
 
-# Compute the test error
-test_predictions <- X_test %*% optimized_theta
-test_mse <- mean((test_predictions - y_test) ^ 2)
+# Apply a logarithmic transformation to the errors
+plot_data_filtered$TrainError <- log(plot_data_filtered$TrainError + 1)  # Adding 1 to avoid log(0)
+plot_data_filtered$TestError <- log(plot_data_filtered$TestError + 1)
 
-# Print the training and test MSE
-cat("Training MSE:", train_mse, "\n")
-cat("Test MSE:", test_mse, "\n")
+# Generate the plot with a logarithmic scale and smoothed lines
+ggplot(plot_data_filtered, aes(x = Iteration)) +
+  geom_line(aes(y = TrainError, color = "Training Error"), stat = "smooth") +
+  geom_line(aes(y = TestError, color = "Test Error"), stat = "smooth") +
+  scale_y_log10(labels = scales::comma) +  # Logarithmic scale
+  labs(title = "Training and Test Error over Iterations (Log Scale)",
+       x = "Iteration Number",
+       y = "Log Error") +
+  scale_color_manual("", 
+                     breaks = c("Training Error", "Test Error"),
+                     values = c("Training Error" = "blue", "Test Error" = "red")) +
+  theme_minimal()
+  
+find_early_stopping_point <- function(test_errors) {
+  stop_point <- which.min(test_errors)
+  return(stop_point)
+}
+# Run the optimization using the wrapper function
+optim_results <- optim(
+  par = rep(0, ncol(X_train)),
+  fn = cost_function_with_errors,
+  method = "BFGS",
+  control = list(maxit = 1000, REPORT = 1)
+)
 
+# Find the early stopping iteration
+early_stop_iteration <- find_early_stopping_point(test_errors)
 
-# Load necessary library
-if (!require("ggplot2")) install.packages("ggplot2")
-library(ggplot2)
+# Use the optimal model parameters
+optimal_theta <- theta_history[[early_stop_iteration]]
 
-# Create data frames for plotting
-plot_train_data <- data.frame(Actual = y_train, Predicted = train_predictions)
-plot_test_data <- data.frame(Actual = y_test, Predicted = test_predictions)
+# Compute the train and test losses with the optimal model
+optimal_train_loss <- cost_function(optimal_theta, X_train, y_train)
+optimal_test_loss <- cost_function(optimal_theta, X_test, y_test)
 
-# Plot for training data
-p1 <- ggplot(plot_train_data, aes(x = Actual, y = Predicted)) +
-    geom_point(color = 'blue', alpha = 0.5) +
-    geom_abline(intercept = 0, slope = 1, color = 'red', linetype = "dashed") +
-    labs(title = "Training Data: Actual vs Predicted",
-         x = "Actual values",
-         y = "Predicted values") +
-    theme_minimal()
-
-# Plot for test data
-p2 <- ggplot(plot_test_data, aes(x = Actual, y = Predicted)) +
-    geom_point(color = 'green', alpha = 0.5) +
-    geom_abline(intercept = 0, slope = 1, color = 'red', linetype = "dashed") +
-    labs(title = "Test Data: Actual vs Predicted",
-         x = "Actual values",
-         y = "Predicted values") +
-    theme_minimal()
-
-# Display the plots
-library(gridExtra)
-grid.arrange(p1, p2, ncol = 2)
+# Print the results
+cat("Early Stopping at Iteration:", early_stop_iteration, "\n")
+cat("Optimal Train Loss:", optimal_train_loss, "\n")
+cat("Optimal Test Loss:", optimal_test_loss, "\n")

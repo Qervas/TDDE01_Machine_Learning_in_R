@@ -1,21 +1,20 @@
-data <- read.csv("optdigits.csv", header = F)
+data <- read.csv("optdigits.csv", header=FALSE)
+data$V65 <- as.factor(data$V65)
 
-
-set.seed(12345)
-n <- dim(data)[1]
 
 # Divide the data according to the partioning principle
-train_ind <- sample(1:n, size = 0.5 * n)
-valid_ind <- sample(setdiff(1:n, train_ind), size = 0.25 * n)
-test_ind <- setdiff(1:n, c(train_ind, valid_ind))
+n <- dim(data)[1]
+set.seed(12345)
+id <- sample(1:n, floor(n*0.5))
+train_data <- data[id, ]
 
-# Change class labels to factor variable to indicate that is 
-# a categorical variable and not a numerical variable
-data[, 65] <- as.factor(data[, 65])
+id1 <- setdiff(1:n, id)
+set.seed(12345)
+id2 <- sample(id1, floor(n*0.25))
+valid_data <- data[id2, ]
 
-train_data <- data[train_ind,]
-valid_data <- data[valid_ind,]
-test_data <- data[test_ind,]
+id3 <- setdiff(id1, id2)
+test_data <- data[id3, ] 
 
 library(kknn)
 
@@ -27,59 +26,61 @@ misclass <- function(conf_matrix) {
 }
 
 # Train KKNN classifier with k=30 and calculate misclassification
-pred.kknn <- kknn(as.factor(V65)~., k=30, train=train_data, test=test_data, kernel="rectangular")
-conf_matrix <- table(test_data[, 65], fitted.values(pred.kknn))
-error <- misclass(conf_matrix)
-print(round(error * 100, 2))
-conf_matrix 
+pred.kknn_test <- kknn(as.factor(V65)~., k=30, train=train_data, test=test_data, kernel="rectangular")
+pred.kknn_train <- kknn(as.factor(V65)~., k=30, train=train_data, test=train_data, kernel="rectangular")
+
+conf_matrix_test <- table(test_data$V65, fitted.values(pred.kknn_test))
+conf_matrix_train <- table(train_data$V65, fitted.values(pred.kknn_train))
+
+error_test <- misclass(conf_matrix_test)
+error_train <- misclass(conf_matrix_train)
+
+print(round(error_train * 100, 2))
+print(round(error_test * 100, 2))
 
 # Get prediction quality for digit 8
-prob_label_eight <- pred.kknn$prob[,9]
-easiest_preds <- order(prob_label_eight, decreasing=TRUE)[1:2]
-hardest_preds <- order(prob_label_eight, decreasing=FALSE)[1:3]
+train_eights <- subset(train_data, V65 == "8")
+prob_eights <- subset(pred.kknn_train[["prob"]], train_data$V65 == "8")
 
-# Visualize easiest predictions for digit 8
-for (i in easiest_preds) {
+hardest_eights <- order(prob_eights[, "8"])[1:3]
+easiest_eights <- order(prob_eights[, "8"], decreasing=TRUE)[1:2]
+combined <- c(hardest_eights, easiest_eights)
+
+for (i in 1:5) {
   
-  reshaped_matrix <- matrix(as.numeric(train_data[i, 1:64]),
+  reshaped_matrix <- matrix(as.numeric(train_eights[combined[i], -65]),
                             nrow=8, ncol=8, byrow=T)
   heatmap(reshaped_matrix, Rowv=NA, Colv=NA)
-  
-}
-
-# Visualize hardest predictions for digit 8
-for (i in hardest_preds) {
-  
-  reshaped_matrix <- matrix(as.numeric(train_data[i, 1:64]),
-                            nrow=8, ncol=8, byrow=T)
-  heatmap(reshaped_matrix, Rowv=NA, Colv=NA)
-  
 }
 
 train_errors <- numeric(30)
 valid_errors <- numeric(30)
 
 for (i in 1:30) {
-  # Train KKNN on training data
+  # Train KKNN on training and valid data
   pred.kknn_tr <- kknn(as.factor(V65)~., train=train_data,
                        test=train_data, k=i, kernel="rectangular")
-  conf_matrix_tr <- table(train_data[, 65], fitted.values(pred.kknn_tr))
-  train_errors[i] <- misclass(conf_matrix_tr)
-  
-  # Train KKNN on validation data
   pred.kknn_va <- kknn(as.factor(V65)~., train=train_data,
                        test=valid_data, k=i, kernel="rectangular")
+  
+  conf_matrix_tr <- table(train_data[, 65], fitted.values(pred.kknn_tr))
   conf_matrix_va <- table(valid_data[, 65], fitted.values(pred.kknn_va))
+  
   valid_errors[i] <- misclass(conf_matrix_va)
+  train_errors[i] <- misclass(conf_matrix_tr)
+  
 }
 
 # Plot the training and validation errors for different k's
-plot(1:30, train_errors, col="blue", xlab="k",
+plot(train_errors*100, col="blue", xlab="k",
      ylab="Misclass errors", main="Training and Validation errors")
-points(1:30, valid_errors, col="red")
+points(valid_errors*100, col="red")
 
 # Train KKNN with optimal k from plot and calculate misclassification error
-pred.kknn_opt <- kknn(as.factor(V65)~., k=14, train=train_data,
+
+opt_k <- which.min(valid_errors)
+print(opt_k)
+pred.kknn_opt <- kknn(as.factor(V65)~., k=opt_k, train=train_data,
                       test=test_data, kernel="rectangular")
 conf_matrix_opt <- table(test_data[, 65], fitted.values(pred.kknn_opt))
 test_error <- misclass(conf_matrix_opt)
@@ -105,6 +106,5 @@ for (i in 1:30) {
 
 plot(1:30, valid_errors, col="blue", xlab="k", type="b",
      ylab="Cross-entropy errors", main="Cross-entropy errors for different K")
-optimal_k <- which.min(valid_errors)
-print(paste("Optimal K: ", optimal_k))
+
 

@@ -148,6 +148,7 @@ train_MSE <- sum((train_data$motor_UPDRS - train_data_predict)^2) / nrow(train_d
 test_data_predict <- predict(linear_modelp, test_data)
 test_MSE <- sum((test_data$motor_UPDRS - test_data_predict)^2) / nrow(test_data)
 
+list(Traing_MSE = train_MSE, Test_MSE = test_MSE)
 
 ### Question 3
 

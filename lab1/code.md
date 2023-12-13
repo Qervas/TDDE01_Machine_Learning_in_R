@@ -1,3 +1,253 @@
+# Assignment 1
+
+```R
+data <- read.csv("optdigits.csv", header = F)
+
+
+set.seed(12345)
+n <- dim(data)[1]
+
+# Divide the data according to the partioning principle
+train_ind <- sample(1:n, size = 0.5 * n)
+valid_ind <- sample(setdiff(1:n, train_ind), size = 0.25 * n)
+test_ind <- setdiff(1:n, c(train_ind, valid_ind))
+
+# Change class labels to factor variable to indicate that is 
+# a categorical variable and not a numerical variable
+data[, 65] <- as.factor(data[, 65])
+
+train_data <- data[train_ind,]
+valid_data <- data[valid_ind,]
+test_data <- data[test_ind,]
+
+library(kknn)
+
+# Misclassification function
+misclass <- function(conf_matrix) {
+  accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+  error <- 1-accuracy
+  return(error)
+}
+
+# Train KKNN classifier with k=30 and calculate misclassification
+pred.kknn <- kknn(as.factor(V65)~., k=30, train=train_data, test=test_data, kernel="rectangular")
+conf_matrix <- table(test_data[, 65], fitted.values(pred.kknn))
+error <- misclass(conf_matrix)
+print(round(error * 100, 2))
+conf_matrix 
+
+# Get prediction quality for digit 8
+prob_label_eight <- pred.kknn$prob[,9]
+easiest_preds <- order(prob_label_eight, decreasing=TRUE)[1:2]
+hardest_preds <- order(prob_label_eight, decreasing=FALSE)[1:3]
+
+# Visualize easiest predictions for digit 8
+for (i in easiest_preds) {
+  
+  reshaped_matrix <- matrix(as.numeric(train_data[i, 1:64]),
+                            nrow=8, ncol=8, byrow=T)
+  heatmap(reshaped_matrix, Rowv=NA, Colv=NA)
+  
+}
+
+# Visualize hardest predictions for digit 8
+for (i in hardest_preds) {
+  
+  reshaped_matrix <- matrix(as.numeric(train_data[i, 1:64]),
+                            nrow=8, ncol=8, byrow=T)
+  heatmap(reshaped_matrix, Rowv=NA, Colv=NA)
+  
+}
+
+train_errors <- numeric(30)
+valid_errors <- numeric(30)
+
+for (i in 1:30) {
+  # Train KKNN on training data
+  pred.kknn_tr <- kknn(as.factor(V65)~., train=train_data,
+                       test=train_data, k=i, kernel="rectangular")
+  conf_matrix_tr <- table(train_data[, 65], fitted.values(pred.kknn_tr))
+  train_errors[i] <- misclass(conf_matrix_tr)
+  
+  # Train KKNN on validation data
+  pred.kknn_va <- kknn(as.factor(V65)~., train=train_data,
+                       test=valid_data, k=i, kernel="rectangular")
+  conf_matrix_va <- table(valid_data[, 65], fitted.values(pred.kknn_va))
+  valid_errors[i] <- misclass(conf_matrix_va)
+}
+
+# Plot the training and validation errors for different k's
+plot(1:30, train_errors, col="blue", xlab="k",
+     ylab="Misclass errors", main="Training and Validation errors")
+points(1:30, valid_errors, col="red")
+
+# Train KKNN with optimal k from plot and calculate misclassification error
+pred.kknn_opt <- kknn(as.factor(V65)~., k=14, train=train_data,
+                      test=test_data, kernel="rectangular")
+conf_matrix_opt <- table(test_data[, 65], fitted.values(pred.kknn_opt))
+test_error <- misclass(conf_matrix_opt)
+print(round(test_error * 100, 2))
+
+
+valid_errors <- numeric(30)
+
+for (i in 1:30) {
+
+  pred.kknn_va <- kknn(as.factor(V65)~., train=train_data,
+                       test=valid_data, k=i, kernel="rectangular")
+  
+  # Cross-entropy calculation
+  for (digit in 0:9) {
+    
+    valid_probs <- pred.kknn_va$prob[which(valid_data$V65 == digit), digit+1]
+    valid_probs <- sum(sapply(valid_probs, function(x) -log(x + 1e-15)))
+    valid_errors[i] <- valid_errors[i] + valid_probs
+  }
+
+}
+
+plot(1:30, valid_errors, col="blue", xlab="k", type="b",
+     ylab="Cross-entropy errors", main="Cross-entropy errors for different K")
+optimal_k <- which.min(valid_errors)
+print(paste("Optimal K: ", optimal_k))
+
+
+```
+
+
+
+***
+
+## Assignment 2
+
+```r
+### Question 1
+library(caret)
+# Reading the data
+parkinsons<-read.csv("parkinsons.csv")
+new_parkinsons <- subset(parkinsons, select = -c(subject., age, sex, test_time, total_UPDRS))
+
+# Dividing training and test data(60/40) 
+n <- dim(new_parkinsons)[1]
+set.seed(12345)
+id <- sample(1:n, floor(n*0.6))
+train <- new_parkinsons[id,]
+test <- new_parkinsons[-id,]
+
+#Scaling the data
+scaler <- preProcess(train)
+train_data <- predict(scaler, train)
+test_data <- predict(scaler, test)
+
+##Question 2
+
+linear_modelp <- lm(motor_UPDRS~0 +., data = train_data)
+summary(linear_modelp)
+
+train_data_predict <- predict(linear_modelp, train_data)
+train_MSE <- sum((train_data$motor_UPDRS - train_data_predict)^2) / nrow(train_data)
+
+test_data_predict <- predict(linear_modelp, test_data)
+test_MSE <- sum((test_data$motor_UPDRS - test_data_predict)^2) / nrow(test_data)
+
+
+### Question 3
+
+##(3.a) Loglikelihood
+
+loglikelihood <- function(parameter)
+{
+  X <- as.matrix(train_data[,-1])
+  n <- nrow(X)
+  y <- train_data[,1]
+  sigma <- parameter[17]
+  theta <- parameter[1:16]
+  return( -n/2 * log(2*pi) - n/2*log(sigma^2) - 1/(2*sigma^2) * sum((y - X%*%theta)^2))
+}
+
+##(3.b) Ridge Function
+
+Ridge <- function(parameter, lambda)
+{
+  return( -loglikelihood(parameter) + lambda * sum(parameter^2))
+}
+
+##(3.c) RidgeOpt Function
+
+RidgeOpt <- function(lambda)
+{
+  return(optim( rep(1,17), fn = Ridge, method = "BFGS", lambda = lambda))
+}
+
+##(3.d) Degree of Freedom
+
+DF <- function(lambda)
+{
+  P <- as.matrix(train_data[,-1])
+  degree <- P %*% solve(t(P) %*% P + lambda * diag(ncol(P))) %*% t(P)
+  return(sum(diag(degree)))
+}
+
+## Question 4
+
+train_P <- as.matrix(train_data[,-1])
+test_P <- as.matrix(test_data[,-1])
+
+# Prediction with lambda=1
+
+ridgeopt_1 <- RidgeOpt(lambda = 1)
+
+predict_train_1 <- train_P %*% ridgeopt_1$par[1:16]
+predict_test_1 <- test_P %*% ridgeopt_1$par[1:16]
+
+error_train_1 <- mean((predict_train_1 - train_data$motor_UPDRS)^2)
+error_test_1 <- mean((predict_test_1 - test_data$motor_UPDRS)^2)
+
+# Prediction with lambda=100
+
+ridgeopt_100 <- RidgeOpt(lambda = 100)
+
+predict_train_100 <- train_P %*% ridgeopt_100$par[1:16]
+predict_test_100 <- test_P %*% ridgeopt_100$par[1:16]
+
+error_train_100 <- mean((predict_train_100 - train_data$motor_UPDRS)^2)
+error_test_100 <- mean((predict_test_100 - test_data$motor_UPDRS)^2)
+
+# Prediction with lambda=100
+
+ridgeopt_1000 <- RidgeOpt(lambda = 1000)
+
+predict_train_1000 <- train_P %*% ridgeopt_1000$par[1:16]
+predict_test_1000 <- test_P %*% ridgeopt_1000$par[1:16]
+
+error_train_1000 <- mean((predict_train_1000 - train_data$motor_UPDRS)^2)
+error_test_1000 <- mean((predict_test_1000 - test_data$motor_UPDRS)^2)
+
+list(error_train_1 = error_train_1, error_train_100 = error_train_100, error_train_1000 = error_train_1000)
+
+list(error_test_1 = error_test_1, error_test_100 = error_test_100, error_test_1000=error_test_1000)
+
+
+degree_1 <- DF(1)
+degree_100 <- DF(100)
+degree_1000 <- DF(1000)
+
+result <- data.frame( lambda = c(1,100,1000), 
+                      MSE_train = c(error_train_1, error_train_100, error_train_1000), 
+                      MSE_test = c(error_test_1,error_test_100,error_test_1000),
+                      DF = c(degree_1, degree_100, degree_1000))
+
+result
+
+```
+
+
+
+***
+
+## Assignment 3
+
+```r
 library(ggplot2)
 library(caret)
 
@@ -247,4 +497,8 @@ ggplot(X_train, aes(x = Age, y = Plasma_glucose_concentration, color = Predicted
   theme_minimal() +
   theme(legend.position = "bottom")
 
+
+
+
+```
 

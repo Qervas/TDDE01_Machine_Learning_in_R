@@ -33,7 +33,7 @@ linear_activation <- function(x)
 linear_tr_nn <- neuralnet(formula = Sin ~ Var, data = tr, hidden = 10, act.fct = linear_activation)
 predict_tr_h1 <- predict(linear_tr_nn, te)
 
-plot(tr, col = "blue", cex= 2)
+plot(tr, col = "blue", cex= 2, main = "Linear Plot")
 points(te, col = "green", cex= 1)
 points(te[,1], predict_tr_h1, col = "orange" , cex= 1 )
 
@@ -45,19 +45,19 @@ relu_activation <- function(x)
 relu_nn <- neuralnet(formula = Sin ~ Var, data = tr, hidden = 10, act.fct = relu_activation)
 predict_te_h2 <- predict(relu_nn, te)
 
-plot(tr, col = "blue", cex= 2)
+plot(tr, col = "blue", cex= 2, main = "RELU Plot")
 points(te, col = "green", cex= 1)
 points(te[,1], predict_te_h2, col = "orange" , cex= 1 )
 
-softmax_activation <- function(x)
+softplus_activation <- function(x)
 {
   y = log(1 + exp(x))
 }
 
-softmax_nn <- neuralnet(formula = Sin ~ Var, data = tr, hidden = 10, act.fct = softmax_activation)
-predict_te_h3 <- predict(softmax_nn, te)
+softplus_nn <- neuralnet(formula = Sin ~ Var, data = tr, hidden = 10, act.fct = softplus_activation)
+predict_te_h3 <- predict(softplus_nn, te)
 
-plot(tr, col = "blue", cex= 2)
+plot(tr, col = "blue", cex= 2, main = "Softplus Plot")
 points(te, col = "green", cex= 1)
 points(te[,1], predict_te_h3, col = "orange" , cex= 1 )
 
